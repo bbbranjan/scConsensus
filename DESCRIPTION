@@ -5,7 +5,7 @@ Version: 0.1.0
 Author: Bobby Ranjan
 Maintainer: Bobby Ranjan <ranjanb@gis.a-star.edu.sg>
 Description: scConsensus consolidates two complementary clustering results to leverage the information from both. It creates a contingency table to allow the user to manually or automatically combine clustering results. This consensus set of cluster labels is then refined by re-clustering the cells on differentially expressed genes between the merged clusters.
-Imports: BiocManager, edgeR, WGCNA, GO.db, AnnotationDbi, preprocessCore, mclust, ComplexHeatmap, circlize, reshape2, Seurat, flashClust, calibrate, dynamicTreeCut, irlba
+Imports: BiocManager, edgeR, WGCNA, GO.db, AnnotationDbi, preprocessCore, mclust, ComplexHeatmap, circlize, reshape2, Seurat, multtest, flashClust, calibrate, dynamicTreeCut, irlba
 License: MIT
 Encoding: UTF-8
 LazyData: true
