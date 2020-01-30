@@ -10,13 +10,18 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
     library(mclust)
     library(ComplexHeatmap)
     library(circlize)
+    library(reshape2)
     
-    if(is.null(cluster_labels_1) | is.null(cluster_labels_2) | is.null(raw_sc_data)) {
+    if(is.null(cluster_labels_1) | is.null(cluster_labels_2)) {
         stop("Incomplete parameters provided.")
     }
     
     ctg_table <- table(cluster_labels_1, cluster_labels_2)
-    ctg_matrix <- as.matrix(ctg_table)
+    ctg_df <- as.data.frame(ctg_table)
+    ctg_df <- dcast(data = ctg_df, formula = cluster_labels_1~cluster_labels_2, fun.aggregate = sum, value.var = "Freq")
+    rownames(ctg_df) <- ctg_df$cluster_labels_1
+    ctg_df$cluster_labels_1 <- NULL
+    ctg_matrix <- as.matrix(ctg_df)
     
     
     pdf(filename, width=15, height=15)
@@ -52,7 +57,10 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
                   row_names_gp = gpar(fontsize = 20, fontface = "bold"),
                   show_row_dend = FALSE,
                   name = "Contingency Table",
-                  show_heatmap_legend = FALSE)
+                  show_heatmap_legend = FALSE,
+                  cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
+                      grid.text(ctg_matrix[i, j], x, y, gp = gpar(fontsize = 20, fontface = "bold", col = "black"))
+                  })
     draw(ht)
     dev.off()
 }
@@ -118,14 +126,12 @@ reclusterDEConsensus <- function(dataMatrix,
     }
     require(edgeR)
     
-    source("CellTypeDEPlot.R")
-    
     ### Initialise data input
     dataIn <- as.matrix(dataMatrix)
     
     
     ### Initialize mean expression threshold
-    meanExprsThrs = meanScalingFactor * mean(2^dataIn-1)
+    meanExprsThrs = meanScalingFactor * mean(expm1(dataIn))
     
     ### Use only clusters with number of cells > minimum cluster size for DE gene calling
     which(table(consensusClusterLabels) > minClusterSize)
@@ -214,6 +220,13 @@ reclusterDEConsensus <- function(dataMatrix,
                 
             } else if (method == "edgeR") {
                 
+                # check if gene satisfies mean expression threshold
+                meanExprsLogicalVector <-
+                    apply(deCellData, 1, function(row) {
+                        mean(row[cellNamesi]) > log2(meanExprsThrs) |
+                            mean(row[cellNamesj]) > log2(meanExprsThrs)
+                    })
+                
                 # Create DGE object
                 dgeObj <- DGEList(counts=deCellData, group = c(rep(1, ncol(cellDatai)), rep(-1, ncol(cellDataj))))
                 
@@ -222,7 +235,7 @@ reclusterDEConsensus <- function(dataMatrix,
                 dgeObj <- estimateTagwiseDisp(dgeObj)
                 
                 # Calculate norm factors for data
-                dgeObj <- calcNormFactors(dgeObj)
+                dgeObj <- calcNormFactors(dgeObj, method = "none")
                 
                 # Perform exact test
                 etObj <- exactTest(object = dgeObj)
@@ -239,15 +252,6 @@ reclusterDEConsensus <- function(dataMatrix,
                     )
                 
                 log2fc <- etObj$table$logFC
-                
-                
-                
-                # check if gene satisfies mean expression threshold
-                meanExprsLogicalVector <-
-                    apply(deCellData, 1, function(row) {
-                        mean(row[cellNamesi]) > log2(meanExprsThrs) |
-                            mean(row[cellNamesj]) > log2(meanExprsThrs)
-                    })
                 
             } else {
                 ### exit from function if no method is chosen
@@ -291,6 +295,10 @@ reclusterDEConsensus <- function(dataMatrix,
     names(log2FCList) <- uniqueClusters
     names(deGeneList) <- uniqueClusters
     
+    saveRDS(object = qValueList, file = "qValueList.rds")
+    saveRDS(object = log2FCList, file = "log2FCList.rds")
+    saveRDS(object = deGeneList, file = "deGeneList.rds")
+    
     ### Obtain union of all de genes
     # initialize empty DE gene union vector
     deGeneUnion <- c()
@@ -299,25 +307,26 @@ reclusterDEConsensus <- function(dataMatrix,
     for (i in 1:(length(uniqueClusters) - 1)) {
         for (j in (i + 1):length(uniqueClusters)) {
             
-            # Rank the DE genes for each comparison by fold change and take the top 20
+            # Rank the DE genes for each comparison by fold change and take the top 30
             
             de_log2fc <- log2FCList[[i]][[j]][which(rownames(dataIn) %in% deGeneList[[i]][[j]])]
             names(de_log2fc) <- rownames(dataIn)[which(rownames(dataIn) %in% deGeneList[[i]][[j]])]
             sorted_de_log2fc <- sort(x = abs(de_log2fc), decreasing = T)
             
-            if(length(sorted_de_log2fc) > 20) {
-                de_genes <- names(sorted_de_log2fc)[1:20]
-            } else {
+            if(length(sorted_de_log2fc) > 30) {
+                de_genes <- names(sorted_de_log2fc)[1:30]
+        } else {
                 de_genes <- names(sorted_de_log2fc)
             }
             
             deGeneUnion <-
                 union(deGeneUnion, de_genes)
-            
         }
     }
     
     print(str(deGeneUnion))
+    
+    saveRDS(deGeneUnion, file = "deGeneUnion.rds")
     
     ### Compute PCA + euclidean distance of cells based on the union of DE genes
     pca.data <- irlba::prcomp_irlba(x = t(dataIn[deGeneUnion, ]), n = min(length(deGeneUnion), 15), center = TRUE, scale. = FALSE)$x
@@ -359,17 +368,6 @@ reclusterDEConsensus <- function(dataMatrix,
         nodg[i] <- length(which(dataIn[, i] > 0))
     }
     
-    ### Plot DE Gene Plot
-    cellTypeDEPlot(
-        dataMatrix = dataIn[deGeneUnion,],
-        nodg = nodg,
-        cellTree = cellTree,
-        consensusClusterLabels = consensusClusterLabels,
-        dynamicColorsList = dynamicColorsList,
-        colScheme = "violet",
-        filename = plotName
-    )
-    
     ### Create and initialise object to return to function caller
     returnObj = list(
         "deGeneUnion" = deGeneUnion,
@@ -378,5 +376,18 @@ reclusterDEConsensus <- function(dataMatrix,
     )
     
     ### Save DE object
-    saveRDS(returnObj, file = filename)
+    saveRDS(object = returnObj, file = filename)
+    
+    ### Plot DE Gene Plot
+    cellTypeDEPlot(
+        dataMatrix = dataIn[deGeneUnion,],
+        nodg = nodg,
+        cellTree = cellTree,
+        clusterLabels = consensusClusterLabels,
+        dynamicColorsList = dynamicColorsList,
+        colScheme = "violet",
+        filename = plotName
+    )
+    
+    return(returnObj)
 }

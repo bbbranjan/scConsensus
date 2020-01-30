@@ -158,25 +158,24 @@ cellTypeDEPlot <- function(dataMatrix,
     ### Plot Heatmap
     # initialize column color bar annotations along with NODG bar plot
     columnColorBar <-
-        HeatmapAnnotation(
-            annotationDf,
-            col = colorList,
-            NODG = anno_barplot(
-                nodg,
-                gp = gpar(fill = "#777777", col = "#777777"),
-                axis = TRUE,
-                axis_side = "right"
-            ),
-            show_annotation_name = TRUE,
-            annotation_name_side = "left",
-            gap = unit(5, "mm"),
-            which = "column"
+        HeatmapAnnotation(df = annotationDf,
+                          col = colorList,
+                          NODG = anno_barplot(
+                              nodg,
+                              gp = gpar(fill = "#777777", col = "#777777"),
+                              axis = TRUE,
+                              axis_param = list(side = "right")
+                          ),
+                          show_annotation_name = TRUE,
+                          annotation_name_side = "left",
+                          gap = unit(5, "mm"),
+                          which = "column"
         )
     
     # Z-transform rows for easy reading
-    heatmapIn <- t(apply(heatmapIn, 1, function(x){
-        (x - mean(x))/sd(x)
-    }))
+    # heatmapIn <- t(apply(heatmapIn, 1, function(x){
+    #     (x - mean(x))/sd(x)
+    # }))
     
     # Select color scheme for heatmap ("blue",  "green" OR "lightblue")
     if (colScheme == "blue") {
@@ -253,7 +252,6 @@ cellTypeDEPlot <- function(dataMatrix,
         row_names_gp = gpar(fontsize = 5),
         
         top_annotation = columnColorBar,
-        top_annotation_height = 4 * columnColorBar@size,
         
         heatmap_legend_param = list(title = "legend", color_bar = "continuous"),
         use_raster = TRUE,
