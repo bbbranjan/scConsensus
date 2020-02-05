@@ -29,12 +29,17 @@ scConsensus imports the following R packages:
 * dynamicTreeCut
 * irlba
 
+The data used in the manuscript is deposited [here](https://zenodo.org/record/3637700#.Xjpf3hMzY1J)
+
 ## Example on 26k FACS-sorted PBMC data from Zheng et al. 2017
 
-We ran Seurat and RCA on 26k FACS-sorted PBMCs from [Zheng et al. 2017](https://www.nature.com/articles/ncomms14049). The Seurat and RCA results are used as input for scConsensus. These objects are available in the scConsensus package.
+We ran Seurat and RCA on 26k FACS-sorted PBMCs from [Zheng et al. 2017](https://www.nature.com/articles/ncomms14049). The Seurat and RCA results are used as input for scConsensus. These objects are available [here](https://zenodo.org/record/3637700#.Xjpf3hMzY1J) - download the *pbmc_26k_S.v3.Filtered.rds* and *pbmc_26k_rca_obj.rds* files.
 
 ```R
 # Load the Seurat and RCA objects...
+seuratObj <- readRDS("pbmc_26k_S.v3.Filtered.rds")
+rca2Obj <- readRDS("pbmc_26k_rca_obj.rds")
+
 
 # Assigning cell type names to Seurat clusters
 seurat_numbers <- as.character(seuratObj$RNA_snn_res.0.2)
