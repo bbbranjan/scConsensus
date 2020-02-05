@@ -2,7 +2,8 @@
 An approach combining semi-supervised and unsupervised clustering for cell type annotation in single-cell RNA-seq data
 
 
-![**Overview of scConsensus**: (a) The scConsensus workflow considers two independent cell cluster annotations obtained from any pair of supervised and unsupervised clustering methods. (b) A contingency table is generated to elucidate the overlap of the annotations on the single cell level. A consensus labeling is generated using either an automated method or manual curation by the user. (c) DE genes are computed between all pairs of consensus clusters. Those DE genes are used to re-cluster the data. The refined clusters thus obtained can be annotated with cell type labels.](images/OverviewFig.png "Overview of scConsensus")
+![](images/OverviewFig.png "Overview of scConsensus")
+**Overview of scConsensus**: (a) The scConsensus workflow considers two independent cell cluster annotations obtained from any pair of supervised and unsupervised clustering methods. (b) A contingency table is generated to elucidate the overlap of the annotations on the single cell level. A consensus labeling is generated using either an automated method or manual curation by the user. (c) DE genes are computed between all pairs of consensus clusters. Those DE genes are used to re-cluster the data. The refined clusters thus obtained can be annotated with cell type labels.
 
 ## Installing scConsensus
 
@@ -96,7 +97,9 @@ consensusClusterLabels <- consensusClusterLabels[colnames(seuratObj)]
 
 ```
 
-![**Contingency Table**: Consensus matrix of cell type  annotation for PBMC data.Columns show  cell type labels based on supervised clustering with RCA, rows show cell type labels based on unsupervised clusters using Seurat and a subsequent marker based annotation. The most informative labelling could be obtained by combining both annotations, e.g. the immune cell annotation derived from Seurat clustering and the Progenitor annotation derived by RCA. ](images/Contingency_Table_Final.png "Contingency Table"){width=500px}
+![](images/Contingency_Table_Final.png "Contingency Table")
+
+**Contingency Table**: Consensus matrix of cell type  annotation for PBMC data.Columns show  cell type labels based on supervised clustering with RCA, rows show cell type labels based on unsupervised clusters using Seurat and a subsequent marker based annotation. The most informative labelling could be obtained by combining both annotations, e.g. the immune cell annotation derived from Seurat clustering and the Progenitor annotation derived by RCA.
 
 ### DE Gene Refinement of Cluster Labels
 
@@ -109,8 +112,8 @@ seurat.data <- seurat.data[rowSums(seurat.data>0)>100, ]
 
 deObj <- reclusterDEConsensus(dataMatrix = seurat.data, consensusClusterLabels = consensusClusterLabels, method = "edgeR", qValThrs = 0.01, fcThrs = 2, meanScalingFactor = 2, deepSplitValues = 1:4, minClusterSize = 10, filename = "Reclustered_DE_edgeR.rds", plotName = "Reclustered_DE_edgeR_Heatmap.pdf")
 ```
-![**DE Gene Heatmap with Cluster Labels**: The black and white rows indicate the consensus cluster labels that were used to call DE genes, while the color bars indicate the different depths of hierarchical clusters that were obtained by reclustering the cells using these DE genes. ](images/Reclustered_DE_edgeR_Heatmap.png "DE Gene Heatmap with Cluster Labels")
-
+![](images/Reclustered_DE_edgeR_Heatmap.png "DE Gene Heatmap with Cluster Labels")
+**DE Gene Heatmap with Cluster Labels**: The black and white rows indicate the consensus cluster labels that were used to call DE genes, while the color bars indicate the different depths of hierarchical clusters that were obtained by reclustering the cells using these DE genes.
 
 We then annotated the resulting cluster labels by assigning cell type names to clusters based on the DE heatmap
 
@@ -153,4 +156,5 @@ umap.df$Seurat <- seurat_facs_matched_celltypes
 umap.df$RCA <- rca_facs_matched_celltypes
 ```
 
-![**UMAP visualization of FACS-sorted PBMCs colored by Seurat, RCA and scConsensus as compared to the FACS labels**  ](images/FACS_UMAPs.png "FACS PBMC UMAPs")
+![](images/FACS_UMAPs.png "FACS PBMC UMAPs")
+**UMAP visualization**: PBMCs colored by Seurat, RCA and scConsensus as compared to the FACS labels.
