@@ -4,8 +4,11 @@
 #'
 #' @param cluster_labels_1 First vector of cluster labels for each cell
 #' @param cluster_labels_2 Second vector of cluster labels for each cell
+#' @param automateConsensus Boolean indicating whether automated consensus should be returned
 #' @param filename name of contingency table file
-plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NULL, filename = "Contingency_Table.pdf") {
+#'
+#' @return consensus cluster labels vector
+plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NULL, automateConsensus = T, filename = "Contingency_Table.pdf") {
 
     if(is.null(cluster_labels_1) | is.null(cluster_labels_2)) {
         stop("Incomplete parameters provided.")
@@ -58,8 +61,44 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
                   })
     ComplexHeatmap::draw(ht)
     dev.off()
-}
 
+    if(automateConsensus) {
+        if(length(cluster_labels_1) > length(cluster_labels_2)){
+            consensusClusterLabels = cluster_labels_1
+            remainderLabels = cluster_labels_2
+        } else if(length(cluster_labels_1) < length(cluster_labels_2)) {
+            consensusClusterLabels = cluster_labels_2
+            remainderLabels = cluster_labels_1
+        } else {
+            if(median(table(cluster_labels_1)) > median(table(cluster_labels_2))) {
+                consensusClusterLabels = cluster_labels_1
+                remainderLabels = cluster_labels_2
+            } else {
+                consensusClusterLabels = cluster_labels_2
+                remainderLabels = cluster_labels_1
+            }
+        }
+
+        if (ncol(ctg_matrix) > nrow(ctg_matrix)) {
+            ctg_matrix <- t(ctg_matrix)
+        }
+
+        for(i in 1:nrow(ctg_matrix)) {
+
+            row <- ctg_matrix[i, ]
+
+            row <- 100*(row/sum(row))
+
+            for(j in 1:length(row)) {
+                if(overlap >= 10) {
+                   consensusClusterLabels[which(remainderLabels) == names(row)[j]] <- paste(rownames(ctg_matrix)[i], names(overlap), sep = "_")
+                }
+            }
+
+        }
+        return(consensusClusterLabels)
+    }
+}
 
 #' @title Recluster consensus clusters using DE gene analysis
 #'
@@ -353,3 +392,6 @@ reclusterDEConsensus <- function(dataMatrix,
 
     return(returnObj)
 }
+
+
+
