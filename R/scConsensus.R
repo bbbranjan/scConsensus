@@ -45,28 +45,28 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
                   column_title = "Cluster labels 2",
                   row_title = "Cluster Labels 1",
                   column_title_side = "top",
-                  column_title_gp = gpar(fontsize = 30, fontface = "bold"),
+                  column_title_gp = grid::gpar(fontsize = 30, fontface = "bold"),
                   column_names_side = "top",
-                  column_names_gp = gpar(fontsize = 20, fontface = "bold"),
+                  column_names_gp = grid::gpar(fontsize = 20, fontface = "bold"),
                   show_column_dend = FALSE,
                   row_title_side = "left",
-                  row_title_gp = gpar(fontsize = 30, fontface = "bold"),
+                  row_title_gp = grid::gpar(fontsize = 30, fontface = "bold"),
                   row_names_side = "left",
-                  row_names_gp = gpar(fontsize = 20, fontface = "bold"),
+                  row_names_gp = grid::gpar(fontsize = 20, fontface = "bold"),
                   show_row_dend = FALSE,
                   name = "Contingency Table",
                   show_heatmap_legend = FALSE,
                   cell_fun = function(j, i, x, y, w, h, col) { # add text to each grid
-                      grid.text(ctg_matrix[i, j], x, y, gp = gpar(fontsize = 20, fontface = "bold", col = "black"))
+                      grid::grid.text(ctg_matrix[i, j], x, y, gp = grid::gpar(fontsize = 20, fontface = "bold", col = "black"))
                   })
     ComplexHeatmap::draw(ht)
     dev.off()
 
     if(automateConsensus) {
-        if(length(cluster_labels_1) > length(cluster_labels_2)){
+        if(length(unique(cluster_labels_1)) > length(unique(cluster_labels_2))){
             consensusClusterLabels = cluster_labels_1
             remainderLabels = cluster_labels_2
-        } else if(length(cluster_labels_1) < length(cluster_labels_2)) {
+        } else if(length(unique(cluster_labels_1)) < length(unique(cluster_labels_2))) {
             consensusClusterLabels = cluster_labels_2
             remainderLabels = cluster_labels_1
         } else {
@@ -90,8 +90,8 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
             row <- 100*(row/sum(row))
 
             for(j in 1:length(row)) {
-                if(overlap >= 10) {
-                   consensusClusterLabels[which(remainderLabels) == names(row)[j]] <- paste(rownames(ctg_matrix)[i], names(overlap), sep = "_")
+                if(row[j] >= 10) {
+                   consensusClusterLabels[which((consensusClusterLabels == rownames(ctg_matrix)[i]) & (remainderLabels == names(row)[j]))] <- paste(rownames(ctg_matrix)[i], names(row)[j], sep = "_")
                 }
             }
 
