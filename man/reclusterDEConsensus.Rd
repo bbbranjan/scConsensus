@@ -4,10 +4,18 @@
 \alias{reclusterDEConsensus}
 \title{Recluster consensus clusters using DE gene analysis}
 \usage{
-reclusterDEConsensus(dataMatrix, consensusClusterLabels,
-  method = "Wilcoxon", meanScalingFactor = 5, qValThrs, fcThrs,
-  deepSplitValues = 1:4, minClusterSize = 10,
-  filename = "de_gene_object.rds", plotName = "DE_Heatmap")
+reclusterDEConsensus(
+  dataMatrix,
+  consensusClusterLabels,
+  method = "Wilcoxon",
+  meanScalingFactor = 5,
+  qValThrs,
+  fcThrs,
+  deepSplitValues = 1:4,
+  minClusterSize = 10,
+  filename = "de_gene_object.rds",
+  plotName = "DE_Heatmap"
+)
 }
 \arguments{
 \item{dataMatrix}{the log-transformed and normalized scRNAseq genes x cells matrix}

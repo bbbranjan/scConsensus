@@ -4,8 +4,12 @@
 \alias{plotContingencyTable}
 \title{plots the contingency table of two clustering results}
 \usage{
-plotContingencyTable(cluster_labels_1 = NULL, cluster_labels_2 = NULL,
-  automateConsensus = T, filename = "Contingency_Table.pdf")
+plotContingencyTable(
+  cluster_labels_1 = NULL,
+  cluster_labels_2 = NULL,
+  automateConsensus = T,
+  filename = "Contingency_Table.pdf"
+)
 }
 \arguments{
 \item{cluster_labels_1}{First vector of cluster labels for each cell}

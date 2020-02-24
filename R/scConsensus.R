@@ -8,6 +8,9 @@
 #' @param filename name of contingency table file
 #'
 #' @return consensus cluster labels vector
+#'
+#' @export
+#'
 plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NULL, automateConsensus = T, filename = "Contingency_Table.pdf") {
 
     if(is.null(cluster_labels_1) | is.null(cluster_labels_2)) {
@@ -116,6 +119,9 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
 #' @param plotName name of DE Heatmap file
 #'
 #' @return list containing vector of DE genes, clustering tree and dynamic color list.
+#'
+#' @export
+#'
 reclusterDEConsensus <- function(dataMatrix,
                                  consensusClusterLabels,
                                  method = "Wilcoxon",

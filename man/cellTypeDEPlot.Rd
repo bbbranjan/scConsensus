@@ -4,9 +4,16 @@
 \alias{cellTypeDEPlot}
 \title{Plots DE Heatmap showing how consensus cluster labels are refined by re-clustering over pair-wise DE genes}
 \usage{
-cellTypeDEPlot(dataMatrix, nodg = NULL, cellTree, clusterLabels,
-  dynamicColorsList, geneLabels = NULL, colScheme = "green",
-  filename = "DE_Heatmap")
+cellTypeDEPlot(
+  dataMatrix,
+  nodg = NULL,
+  cellTree,
+  clusterLabels,
+  dynamicColorsList,
+  geneLabels = NULL,
+  colScheme = "green",
+  filename = "DE_Heatmap"
+)
 }
 \arguments{
 \item{dataMatrix}{the log-transformed and normalized scRNAseq genes x cells matrix}

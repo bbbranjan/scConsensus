@@ -11,6 +11,9 @@
 #'@param colScheme c("green", "blue", "lightblue")
 #'@param filename name of DE heatmap file
 #'
+#'@export
+#'
+#'
 cellTypeDEPlot <- function(dataMatrix,
                            nodg = NULL,
                            cellTree,
