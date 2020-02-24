@@ -210,8 +210,8 @@ cellTypeDEPlot <- function(dataMatrix,
     } else if (colScheme == "violet") {
         # "violet": color scheme starts from light blue as the lowest value and goes through white to red and deep red
         # since most values are near the lower-mid range, the background will be violet
-        circlize::colorScheme <-
-            colorRamp2(
+        colorScheme <-
+            circlize::colorRamp2(
                 seq(min(abs(heatmapIn)), max(abs(heatmapIn)), length.out = 5),
                 c("#7777FF",
                   "white",
