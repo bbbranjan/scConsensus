@@ -155,13 +155,13 @@ cellTypeDEPlot <- function(dataMatrix,
                           col = colorList,
                           NODG = anno_barplot(
                               nodg,
-                              gp = gpar(fill = "#777777", col = "#777777"),
+                              gp = grid::gpar(fill = "#777777", col = "#777777"),
                               axis = TRUE,
                               axis_param = list(side = "right")
                           ),
                           show_annotation_name = TRUE,
                           annotation_name_side = "left",
-                          gap = unit(5, "mm"),
+                          gap = grid::unit(5, "mm"),
                           which = "column"
         )
 
@@ -233,16 +233,16 @@ cellTypeDEPlot <- function(dataMatrix,
         row_dend_side = "left",
 
         show_row_dend = TRUE,
-        row_dend_width = unit(30, "mm"),
+        row_dend_width = grid::unit(30, "mm"),
 
         show_column_dend = TRUE,
-        column_dend_height = unit(100, "mm"),
+        column_dend_height = grid::unit(100, "mm"),
         column_dend_reorder = FALSE,
 
         show_column_names = TRUE,
 
         show_row_names = TRUE,
-        row_names_gp = gpar(fontsize = 5),
+        row_names_gp = grid::gpar(fontsize = 5),
 
         top_annotation = columnColorBar,
 
