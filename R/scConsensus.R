@@ -345,7 +345,7 @@ reclusterDEConsensus <- function(dataMatrix,
 
     ### Build dendrogram using distance matrix d
     if(require(fastCluster)){
-	    cellTree = fastCluster::hclust(d, method = "ward.D2"),
+	    cellTree = fastCluster::hclust(d, method = "ward.D2")
     }else{
 	    cellTree = stats::hclust(d, method = "ward.D2")
     }
