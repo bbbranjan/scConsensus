@@ -105,7 +105,7 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
 
 #' @title Recluster consensus clusters using DE gene analysis
 #'
-#' @author ranjanb
+#' @author ranjanb, schmidtf
 #'
 #' @param dataMatrix the log-transformed and normalized scRNAseq genes x cells matrix
 #' @param consensusClusterLabels consensus cell type labels for each cell
@@ -344,7 +344,11 @@ reclusterDEConsensus <- function(dataMatrix,
     # d = as.dist(1 - cor(dataIn[deGeneUnion, ], method = "pearson"))
 
     ### Build dendrogram using distance matrix d
-    cellTree = stats::hclust(d, method = "ward.D2")
+    if(require(fastCluster)){
+	    cellTree = fastCluster::hclust(d, method = "ward.D2"),
+    }else{
+	    cellTree = stats::hclust(d, method = "ward.D2")
+    }
 
     # Initialize empty dynamic colors list
     dynamicColorsList <- list()
