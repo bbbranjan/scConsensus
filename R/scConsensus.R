@@ -85,6 +85,12 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
         if (ncol(ctg_matrix) > nrow(ctg_matrix)) {
             ctg_matrix <- t(ctg_matrix)
         }
+	else if(ncol(ctg_matrix) == nrow(ctg_matrix)) { 
+		      if(length(intersect(unique(consensusClusterLabels), rownames(ctg_matrix)))!= nrow(ctg_matrix)) {
+			              ctg_matrix <- t(ctg_matrix)
+	      }
+	    }
+
 
         for(i in 1:nrow(ctg_matrix)) {
 
