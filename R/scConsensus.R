@@ -1,349 +1,3 @@
-#'@description: Find markers (differentially expressed genes) between two group of cells.
-#'
-#'@inputs:
-#'@param object dataMatrix of genes (rows) x cells (columns) expression matrix (log normalized value)
-#'@param cells.1 Vector of cell names belonging to group 1
-#'@param cells.2 Vector of cell names belonging to group 2
-#'@param features Genes to test. Default is NULL which mean to use all genes
-#'@param logfc.threshold Limit testing to genes which show, on average, at least
-#' X-fold difference (log-scale) between the two groups of cells. Default is log(1.5)
-#'@param test.use Denotes which test to use. Available options are:
-#' \itemize{
-#'  \item{"wilcox"} : Identifies differentially expressed genes between two
-#'  groups of cells using a Wilcoxon Rank Sum test (default)
-#'  \item{"bimod"} : Likelihood-ratio test for single cell gene expression,
-#'  (McDavid et al., Bioinformatics, 2013)
-#'  \item{"roc"} : Identifies 'markers' of gene expression using ROC analysis.
-#'  For each gene, evaluates (using AUC) a classifier built on that gene alone,
-#'  to classify between two groups of cells. An AUC value of 1 means that
-#'  expression values for this gene alone can perfectly classify the two
-#'  groupings (i.e. Each of the cells in cells.1 exhibit a higher level than
-#'  each of the cells in cells.2). An AUC value of 0 also means there is perfect
-#'  classification, but in the other direction. A value of 0.5 implies that
-#'  the gene has no predictive power to classify the two groups. Returns a
-#'  'predictive power' (abs(AUC-0.5) * 2) ranked matrix of putative differentially
-#'  expressed genes.
-#'  \item{"t"} : Identify differentially expressed genes between two groups of
-#'  cells using the Student's t-test.
-#'@param min.pct  only test genes that are detected in a minimum fraction of
-#' min.pct cells in either of the two populations. Meant to speed up the function
-#' by not testing genes that are very infrequently expressed. Default is 0.25
-#'@param min.diff.pct  only test genes that show a minimum difference in the
-#' fraction of detection between the two groups. Set to -Inf by default
-#'@param only.pos Only return positive markers (FALSE by default)
-#'@param verbose Print a progress bar once expression testing begins
-#'@param max.cells.per.ident Down sample each identity class to a max number.
-#' Default is no downsampling. Not activated by default (set to Inf)
-#'@param random.seed Random seed for downsampling. default is 1
-#'@param min.cells.group Minimum number of cells in one of the groups
-#'@param pseudocount.use Pseudocount to add to averaged expression values when calculating logFC. 1 by default.
-#'@param MeanExprsThrs a minimum expression threshold of average cluster expression for a gene to be considered a DE gene.
-#' the mean expression value is in the linear scale!
-#'@param p.adjust.methods correction method for calculating qvalue. default is BH (or FDR)
-#'
-
-#'@output:
-#'returnObj = list(
-#''list CompGeneList: List of genes for which the DE statistical test was performed for each pairwise cluster comparison
-#'list qValueList: list of q-values from the DE statistical test for genes where test was performed for each pairwise cluster comparison
-#'list log2FCList: list of log2-fold-changes from the DE statistical test for genes where test was performed for each pairwise cluster comparison=
-#'character vector deGeneUnion: union of top ndeg DE genes from up- and down- regulated set for all pairwise comparison
-#'numeric matrix deCountMatrix: matrix with number of DE genes for each pairwise cluster comparison
-#'list deGeneRegulationList: list of up and down regulated DE genes for each pairwise cluster comparison ordered by log2-fold-change
-#'list log2FCDEList: list of log2-fold-change for up and down regulated DE genes for each pairwise cluster comparison - corresponds to same order as in deGeneRegulationList
-#'list qValueDEList: list of q-values for up and down regulated DE genes for each pairwise cluster comparison - corresponds to same order as in deGeneRegulationList
-#'list upregulatedDEGeneList: list of cluster-specific upregulated DE genes
-#'list downregulatedDEGeneList: list of cluster-specific downregulated DE genes
-#')
-#'
-
-library(tidyverse)
-library(ROCR)
-library(dplyr)
-
-ComputePairWiseDE <-  function(object, cells.1 = NULL, cells.2 = NULL, features = NULL, logfc.threshold = log(1.5), test.use = "wilcox", min.pct = 0.25, min.diff.pct = -Inf, verbose = TRUE, only.pos = FALSE, max.cells.per.ident = Inf, random.seed = 1, min.cells.group = 3, pseudocount.use = 1, MeanExprsThrs = 0, p.adjust.methods = "BH"){
-	  ## for Wilcox test
-	  WilcoxDETest <- function(data.use, cells.1, cells.2, verbose = TRUE){
-		      group.info <- data.frame(row.names = c(cells.1, cells.2))
-	      group.info[cells.1, "group"] <- "Group1"
-	      group.info[cells.2, "group"] <- "Group2"
-	      group.info[, "group"] <- factor(x = group.info[, "group"])
-	      data.use <- data.use[, rownames(x = group.info), drop = FALSE]
-	      p_val <- sapply(
-			           X = 1:nrow(x = data.use),
-				         FUN = function(x) {
-					         return(wilcox.test(data.use[x, ] ~ group.info[, "group"])$p.value)
-					         }
-				       )
-		          return(data.frame(p_val, row.names = rownames(x = data.use)))
-			  }
-  
-  # List of DE Functions
-  ## for bimod
-  # Likelihood ratio test for zero-inflated data
-  # Identifies differentially expressed genes between two groups of cells using
-  # the LRT model proposed in McDavid et al, Bioinformatics, 2013
-  bimodLikData <- function(x, xmin = 0) {
-	      x1 <- x[x <= xmin]
-      x2 <- x[x > xmin]
-          xal <- MinMax(
-			      data = length(x = x2) / length(x = x),
-			            min = 1e-5,
-			            max = (1 - 1e-5)
-				        )
-          likA <- length(x = x1) * log(x = 1 - xal)
-	      if (length(x = x2) < 2) {
-		            mysd <- 1
-	      } else {
-		            mysd <- sd(x = x2)
-	          }
-	      likB <- length(x = x2) *
-		            log(x = xal) +
-			          sum(dnorm(x = x2, mean = mean(x = x2), sd = mysd, log = TRUE))
-			      return(likA + likB)
-			        }
-    DifferentialLRT <- function(x, y, xmin = 0) {
-	        lrtX <- bimodLikData(x = x)
-        lrtY <- bimodLikData(x = y)
-	    lrtZ <- bimodLikData(x = c(x, y))
-	    lrt_diff <- 2 * (lrtX + lrtY - lrtZ)
-	        return(pchisq(q = lrt_diff, df = 3, lower.tail = F))
-	      }
-    DiffExpTest <- function(data.use, cells.1,  cells.2, verbose = TRUE) {
-        p_val <- unlist(
-			      x = sapply(
-					            X = 1:nrow(x = data.use),
-						            FUN = function(x) {
-								              return(DifferentialLRT(
-												                 x = as.numeric(x = data.use[x, cells.1]),
-														             y = as.numeric(x = data.use[x, cells.2])
-														           ))
-						            }
-						          )
-			          )
-	    to.return <- data.frame(p_val, row.names = rownames(x = data.use))
-	    return(to.return)
-	      }
-      ## for ROC test
-      DifferentialAUC <- function(x, y) {
-	          prediction.use <- prediction(
-					             predictions = c(x, y),
-						           labels = c(rep(x = 1, length(x = x)), rep(x = 0, length(x = y))),
-						           label.ordering = 0:1
-							       )
-          perf.use <- performance(prediction.obj = prediction.use, measure = "auc")
-	      auc.use <- round(x = perf.use@y.values[[1]], digits = 3)
-	      return(auc.use)
-	        }
-      AUCMarkerTest <- function(data1, data2, mygenes, print.bar = TRUE) {
-	          myAUC <- unlist(x = lapply(
-					           X = mygenes,
-						         FUN = function(x) {
-								         return(DifferentialAUC(
-												          x = as.numeric(x = data1[x, ]),
-													            y = as.numeric(x = data2[x, ])
-													          ))
-						         }
-						       ))
-          myAUC[is.na(x = myAUC)] <- 0
-	      iterate.fxn <- ifelse(test = print.bar, yes = pblapply, no = lapply)
-	      avg_diff <- unlist(x = iterate.fxn(
-						       X = mygenes,
-						             FUN = function(x) {
-								             return(
-										              ExpMean(
-												                  x = as.numeric(x = data1[x, ])
-														            ) - ExpMean(
-														              x = as.numeric(x = data2[x, ])
-														            )
-											              )
-						             }
-						           ))
-	          toRet <- data.frame(cbind(myAUC, avg_diff), row.names = mygenes)
-	          toRet <- toRet[rev(x = order(toRet$myAUC)), ]
-		      return(toRet)
-		    }
-        MarkerTest <- function(data.use, cells.1, cells.2, verbose = TRUE){
-		    to.return <- AUCMarkerTest(
-					             data1 = data.use[, cells.1, drop = FALSE],
-						           data2 = data.use[, cells.2, drop = FALSE],
-						           mygenes = rownames(x = data.use),
-							         print.bar = verbose
-							       )
-	    to.return$power <- abs(x = to.return$myAUC - 0.5) * 2
-	        return(to.return)
-	      }
-        # Differential expression testing using Student's t-test
-        # Identify differentially expressed genes between two groups of cells using the Student's t-test
-        DiffTTest <- function(data.use, cells.1, cells.2, verbose = TRUE) {
-	    p_val <- unlist(
-			          x = sapply(
-						        X = 1:nrow(data.use),
-							        FUN = function(x) {
-									          t.test(x = data.use[x, cells.1], y = data.use[x, cells.2])$p.value
-							        }
-							      )
-				      )
-	        to.return <- data.frame(p_val,row.names = rownames(x = data.use))
-	        return(to.return)
-		  }
-	  
-	  
-	  features <- features %||% rownames(x = object)
-	  # error checking
-	  if (length(x = cells.1) == 0) {
-		      stop("Cell group 1 is empty - identity of group 1 need to be defined ")
-	    } 
-	    else if (length(x = cells.2) == 0) {
-		        stop("Cell group 2 is empty - identity of group 2 need to be defined ")
-	        return(NULL)
-		  } 
-	    else if (length(x = cells.1) < min.cells.group) {
-		        stop("Cell group 1 has fewer than ", min.cells.group, " cells")
-	      } 
-	      else if (length(x = cells.2) < min.cells.group) {
-		          stop("Cell group 2 has fewer than ", min.cells.group, " cells")
-	        } 
-	      else if (any(!cells.1 %in% colnames(x = object))) {
-		          bad.cells <- colnames(x = object)[which(x = !as.character(x = cells.1) %in% colnames(x = object))]
-	          stop(
-		             "The following cell names provided to cells.1 are not present: ",
-			           paste(bad.cells, collapse = ", ")
-			         )
-		    } else if (any(!cells.2 %in% colnames(x = object))) {
-			        bad.cells <- colnames(x = object)[which(x = !as.character(x = cells.2) %in% colnames(x = object))]
-		        stop(
-			           "The following cell names provided to cells.2 are not present: ",
-				         paste(bad.cells, collapse = ", ")
-				       )
-			  }
-	        
-	        # feature selection (based on percentages)
-	        thresh.min <- 0
-	        pct.1 <- round(
-			           x = Matrix::rowSums(x = object[features, cells.1, drop = FALSE] > thresh.min) /
-					         length(x = cells.1),
-					     digits = 16
-					       )
-		  pct.2 <- round(
-				     x = Matrix::rowSums(x = object[features, cells.2, drop = FALSE] > thresh.min) /
-					           length(x = cells.2),
-					       digits = 16
-					         )
-		  object.alpha <- cbind(pct.1, pct.2)
-		    colnames(x = object.alpha) <- c("pct.1", "pct.2")
-		    alpha.min <- apply(X = object.alpha, MARGIN = 1, FUN = max)
-		      names(x = alpha.min) <- rownames(x = object.alpha)
-		      features <- names(x = which(x = alpha.min > min.pct))
-		        if (length(x = features) == 0) {
-				    stop("No features pass min.pct threshold")
-		        }
-		        alpha.diff <- alpha.min - apply(X = object.alpha, MARGIN = 1, FUN = min)
-			  features <- names(
-					        x = which(x = alpha.min > min.pct & alpha.diff > min.diff.pct)
-						  )
-			  if (length(x = features) == 0) {
-				      stop("No features pass min.diff.pct threshold")
-			    }
-			    
-			    # feature selection (based on average difference)
-			    mean.fxn <- function(x) {
-				            return(log(x = mean(x = expm1(x = x)) + pseudocount.use))
-			          }
-			    object.1 <- apply(
-					          X = object[features, cells.1, drop = FALSE],
-						      MARGIN = 1,
-						      FUN = mean.fxn
-						        )
-			      object.2 <- apply(
-						    X = object[features, cells.2, drop = FALSE],
-						        MARGIN = 1,
-						        FUN = mean.fxn
-							  )
-			      total.diff <- (object.1 - object.2)
-			        
-			        # feature selection (based on mean exprssion threshold)
-			        features = names(x = which(x = expm1(object.1) > MeanExprsThrs  | expm1(object.2) > MeanExprsThrs ))
-			        if (length(x = features) == 0) {
-					    stop("No features pass log mean exprssion threshold")
-				  }
-				  
-				  # feature selection (based on logfc threshold)
-				  features.diff <- if (only.pos) {
-					      names(x = which(x = total.diff > logfc.threshold))
-				    } else {
-					        names(x = which(x = abs(x = total.diff) > logfc.threshold))
-				      }
-				  features <- intersect(x = features, y = features.diff)
-				    if (length(x = features) == 0) {
-					        stop("No features pass logfc.threshold threshold")
-				    }
-				    
-				    # sampling cell for DE computation
-				    if (max.cells.per.ident < Inf) {
-					        set.seed(seed = random.seed)
-				        # Should be cells.1 and cells.2?
-				        if (length(x = cells.1) > max.cells.per.ident) {
-						      cells.1 <- sample(x = cells.1, size = max.cells.per.ident)
-					    }
-					    if (length(x = cells.2) > max.cells.per.ident) {
-						          cells.2 <- sample(x = cells.2, size = max.cells.per.ident)
-					        }
-					  }
-
-				      # perform DE
-				      de.results <- switch(
-							       EXPR = test.use,
-							           'wilcox' = WilcoxDETest(
-											         data.use = object[features, c(cells.1, cells.2), drop = FALSE],
-												       cells.1 = cells.1,
-												       cells.2 = cells.2,
-												             verbose = verbose
-												           ),
-							       'bimod' = DiffExpTest(
-										           data.use = object[features, c(cells.1, cells.2), drop = FALSE],
-											         cells.1 = cells.1,
-											         cells.2 = cells.2,
-												       verbose = verbose
-												     ),
-							       'roc' = MarkerTest(
-										        data.use = object[features, c(cells.1, cells.2), drop = FALSE],
-											      cells.1 = cells.1,
-											      cells.2 = cells.2,
-											            verbose = verbose
-											          ),
-							       't' = DiffTTest(
-									             data.use = object[features, c(cells.1, cells.2), drop = FALSE],
-										           cells.1 = cells.1,
-										           cells.2 = cells.2,
-											         verbose = verbose
-											       ),
-							       stop("Unknown test: ", test.use)
-							         )
-
-				      diff.col <- "avg_logFC"
-				        de.results[, diff.col] <- total.diff[rownames(x = de.results)]
-				        de.results <- cbind(de.results, object.alpha[rownames(x = de.results), , drop = FALSE])
-					  
-					  if (only.pos) {
-						      de.results <- de.results[de.results[, diff.col] > 0, , drop = FALSE]
-					  }
-					  
-					  if (test.use == "roc") {
-						      de.results <- de.results[order(-de.results$power, -de.results[, diff.col]), ]
-					    } else {
-						        de.results <- de.results[order(de.results$p_val, -de.results[, diff.col]), ]
-					        de.results$p_val_adj = p.adjust(
-										      p = de.results$p_val,
-										            method = p.adjust.methods
-										          )
-						  }
-					    de.results$Gene<-row.names(de.results)
-					    row.names(de.results)<-NULL
-					      return(de.results)
-}
-
-
 #' @title plots the contingency table of two clustering results
 #'
 #' @author ranjanb
@@ -696,8 +350,8 @@ reclusterDEConsensus <- function(dataMatrix,
     # d = as.dist(1 - cor(dataIn[deGeneUnion, ], method = "pearson"))
 
     ### Build dendrogram using distance matrix d
-    if(require(fastCluster)){
-	    cellTree = fastCluster::hclust(d, method = "ward.D2")
+    if(require(fastcluster)){
+	    cellTree = fastcluster::hclust(d, method = "ward.D2")
     }else{
 	    cellTree = stats::hclust(d, method = "ward.D2")
     }
@@ -763,13 +417,14 @@ reclusterDEConsensus <- function(dataMatrix,
 #' @param dataMatrix the log-transformed and normalized scRNAseq genes x cells matrix
 #' @param consensusClusterLabels consensus cell type labels for each cell
 #' @param method Method used for DE gene statistical test
-#' @param meanScalingFactor scale of the mean gene expression across the gene expression matrix to set a minimum threshold of average cluster expression for a gene to be considered a DE gene.
 #' @param qValThrs maximum q-value threshold for statistical test
 #' @param fcThrs minimum fold-change threshold for DE gene criterion (natural log as by Seurat convention)
 #' @param deepSplitValues vector of WGCNA tree cutting deepsplit parameters
 #' @param minClusterSize specifies the type of minimum cluster size
+#' @param minPerCent Minium percentage of cells expressing a gene within a cluster
 #' @param filename name of DE gene object file
 #' @param plotName name of DE Heatmap file
+#' @param NumbertopDEGenes number of top DE genes to consider for final clustering
 #' @param nCores nuber of cores to use for DE gene calculation
 #'
 #' @return list containing vector of DE genes, clustering tree and dynamic color list.
@@ -778,21 +433,19 @@ reclusterDEConsensus <- function(dataMatrix,
 #'
 reclusterDEConsensusFast <- function(dataMatrix,
                                  consensusClusterLabels,
-                                 method = "Wilcoxon",
-                                 meanScalingFactor = 5,
+                                 method = "wilcox",
                                  qValThrs=0.1,
                                  fcThrs=0.5,
                                  deepSplitValues = 1:4,
                                  minClusterSize = 10,
+                                 minPerCent = 20,
                                  filename = "de_gene_object.rds",
                                  plotName = "DE_Heatmap",
+                                 NumbertopDEGenes = 30,
 			                        	 nCores = 1) {
     #libraries required for parallel execution	
     require(foreach)
     require(doParallel)
-
-    ### Initialize mean expression threshold
-    meanExprsThrs = meanScalingFactor * mean(expm1(dataIn))
 
     ### Use only clusters with number of cells > minimum cluster size for DE gene calling
     which(table(consensusClusterLabels) > minClusterSize)
@@ -807,132 +460,346 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     ### If the cluster label vector is unnamed, name it in the order of the data matrix columns
     if (is.null(names(consensusClusterLabels))) {
-        names(consensusClusterLabels) <- colnames(dataIn)
+        names(consensusClusterLabels) <- colnames(dataMatrix)
     }
 
-    ### Initialize nested lists to store q values, log-normalized fold change values and de genes
-    qValueList <-
-        rep(list(list()), numberUniqueClusters)
-    logFCList <-
-        rep(list(list()), numberUniqueClusters)
-    deGeneList <- rep(list(list()), numberUniqueClusters)
 
     ### Initialise number of comparisons as n(n-1)/2
-    numComparisons <-
-        (numberUniqueClusters* (numberUniqueClusters - 1)) / 2
+    numComparisons <- (numberUniqueClusters* (numberUniqueClusters - 1)) / 2
 
     ### Conduct pairwise cluster comparison to obtain q-values, log-normalized fold changes and
     ### DE genes for each comparison
     cl <- makeCluster(nCores) #not to overload your computer
     registerDoParallel(cl)
 
-    foreach (i = 1:(numberUniqueClusters - 1)) %dopar% { 
-        for (j in (i + 1):numberUniqueClusters) {
-            qValueList[[i]][[j]] <- c()
-            logFCList[[i]][[j]] <- c()
-            deGeneList[[i]][[j]] <- c()
-            ### Get the cell names cell data for cluster i
-            cellNamesi <- names(consensusClusterLabels)[which(consensusClusterLabels == uniqueClusters[i])]
-            cellDatai <- dataIn[, cellNamesi]
-
-            ### Get the cell names cell data for cluster j
-            cellNamesj <- names(consensusClusterLabels)[which(consensusClusterLabels == uniqueClusters[j])]
-            cellDataj <- dataIn[, cellNamesj]
-
-            if (method != "edgeR") {
-              marker.genes = ComputePairWiseDE(object = as.matrix(dataMatrix),
-                                                     cells.1 = cellNamesi,
-                                                     cells.2 = cellNamesj,
-                                                     features = NULL,
-                                                     logfc.threshold = fcThrs,
-                                                     test.use = method,
-                                                     min.pct = 0.20,
-                                                     min.diff.pct = -Inf,
-                                                     verbose = TRUE,
-                                                     only.pos = FALSE,
-                                                     max.cells.per.ident = Inf,
-                                                     random.seed = 1,
-                                                     min.cells.group = 3,
-                                                     pseudocount.use = 1,
-                                                     MeanExprsThrs = MeanExprsThrs,
-                                                     p.adjust.methods = "BH"))
-              
-              if (dim(marker.genes)[1]>1){
-                marker.genes = marker.genes[marker.genes$p_val_adj < qValThrs,]
-                qValueList[[i]][[j]] <- marker.genes$p_val_adj
-		            logFCList[[i]][[j]] <- marker.genes$avg_logFC
-	              deGeneList[[i]][[j]] <- marker.genes$Gene
-              }
-            } else if (method == "edgeR") {
-                # Create DGE object
-                dgeObj <- edgeR::DGEList(counts=deCellData, group = c(rep(1, ncol(cellDatai)), rep(-1, ncol(cellDataj))))
-
-                # Estimate common and tag-wise dispersion for the pair of clusters
-                dgeObj <- edgeR::estimateCommonDisp(dgeObj)
-                dgeObj <- edgeR::estimateTagwiseDisp(dgeObj)
-
-                # Calculate norm factors for data
-                dgeObj <- edgeR::calcNormFactors(dgeObj, method = "none")
-
-                # Perform exact test
-                etObj <- edgeR::exactTest(object = dgeObj)
-               
-                if (dim(etObj$table)[1]>1){
-                  qValues_EdgeR<-p.adjust(etObj$table$PValue,method = "BH")
-                  marker.genes = etObj$table[intersect(which(abs(log(2^(marker.genes$logFC)))>fcThrs),qValues_EdgeR<qValThrs),]
-                  qValueList[[i]][[j]] <- marker.genes$qValues_EdgeR[intersect(which(abs(log(2^(marker.genes$logFC)))>fcThrs),qValues_EdgeR<qValThrs)]
-                  logFCList[[i]][[j]] <- log(2^(marker.genes$logFC))
-                  deGeneList[[i]][[j]] <- row.names(marker.genes)
-                }
-            } else {
-                ### exit from function if no method is chosen
-                print("Incorrect method chosen.")
-                return(NULL)
+    #Parallel outer loop
+    deGenes <- foreach (i = 1:(numberUniqueClusters - 1),.combine=rbind) %dopar% { 
+      library(tidyverse)
+      library(ROCR)
+      library(dplyr)
+      #Function definition instead of export
+      ComputePairWiseDE <- function(object, cells.1 = NULL, cells.2 = NULL, features = NULL, 
+                                    logfc.threshold = log(1.5), test.use = "wilcox", min.pct = 0.25, 
+                                    min.diff.pct = -Inf, verbose = TRUE, only.pos = FALSE, max.cells.per.ident = Inf, 
+                                    random.seed = 1, min.cells.group = 3, pseudocount.use = 1, MeanExprsThrs = 0, p.adjust.methods = "BH"){
+        ## for Wilcox test
+        WilcoxDETest <- function(data.use, cells.1, cells.2, verbose = TRUE){
+          group.info <- data.frame(row.names = c(cells.1, cells.2))
+          group.info[cells.1, "group"] <- "Group1"
+          group.info[cells.2, "group"] <- "Group2"
+          group.info[, "group"] <- factor(x = group.info[, "group"])
+          data.use <- data.use[, rownames(x = group.info), drop = FALSE]
+          p_val <- sapply(
+            X = 1:nrow(x = data.use),
+            FUN = function(x) {
+              return(wilcox.test(data.use[x, ] ~ group.info[, "group"])$p.value)
             }
+          )
+          return(data.frame(p_val, row.names = rownames(x = data.use)))
         }
+        
+        bimodLikData <- function(x, xmin = 0) {
+          x1 <- x[x <= xmin]
+          x2 <- x[x > xmin]
+          xal <- MinMax(
+            data = length(x = x2) / length(x = x),
+            min = 1e-5,
+            max = (1 - 1e-5)
+          )
+          likA <- length(x = x1) * log(x = 1 - xal)
+          if (length(x = x2) < 2) {
+            mysd <- 1
+          } else {
+            mysd <- sd(x = x2)
+          }
+          likB <- length(x = x2) *
+            log(x = xal) +
+            sum(dnorm(x = x2, mean = mean(x = x2), sd = mysd, log = TRUE))
+          return(likA + likB)
+        }
+        DifferentialLRT <- function(x, y, xmin = 0) {
+          lrtX <- bimodLikData(x = x)
+          lrtY <- bimodLikData(x = y)
+          lrtZ <- bimodLikData(x = c(x, y))
+          lrt_diff <- 2 * (lrtX + lrtY - lrtZ)
+          return(pchisq(q = lrt_diff, df = 3, lower.tail = F))
+        }
+        DiffExpTest <- function(data.use, cells.1,  cells.2, verbose = TRUE) {
+          p_val <- unlist(
+            x = sapply(
+              X = 1:nrow(x = data.use),
+              FUN = function(x) {
+                return(DifferentialLRT(
+                  x = as.numeric(x = data.use[x, cells.1]),
+                  y = as.numeric(x = data.use[x, cells.2])
+                ))
+              }
+            )
+          )
+          to.return <- data.frame(p_val, row.names = rownames(x = data.use))
+          return(to.return)
+        }
+        ## for ROC test
+        DifferentialAUC <- function(x, y) {
+          prediction.use <- prediction(
+            predictions = c(x, y),
+            labels = c(rep(x = 1, length(x = x)), rep(x = 0, length(x = y))),
+            label.ordering = 0:1
+          )
+          perf.use <- performance(prediction.obj = prediction.use, measure = "auc")
+          auc.use <- round(x = perf.use@y.values[[1]], digits = 3)
+          return(auc.use)
+        }
+        AUCMarkerTest <- function(data1, data2, mygenes, print.bar = TRUE) {
+          myAUC <- unlist(x = lapply(
+            X = mygenes,
+            FUN = function(x) {
+              return(DifferentialAUC(
+                x = as.numeric(x = data1[x, ]),
+                y = as.numeric(x = data2[x, ])
+              ))
+            }
+          ))
+          myAUC[is.na(x = myAUC)] <- 0
+          iterate.fxn <- ifelse(test = print.bar, yes = pblapply, no = lapply)
+          avg_diff <- unlist(x = iterate.fxn(
+            X = mygenes,
+            FUN = function(x) {
+              return(
+                ExpMean(
+                  x = as.numeric(x = data1[x, ])
+                ) - ExpMean(
+                  x = as.numeric(x = data2[x, ])
+                )
+              )
+            }
+          ))
+          toRet <- data.frame(cbind(myAUC, avg_diff), row.names = mygenes)
+          toRet <- toRet[rev(x = order(toRet$myAUC)), ]
+          return(toRet)
+        }
+        MarkerTest <- function(data.use, cells.1, cells.2, verbose = TRUE){
+          to.return <- AUCMarkerTest(
+            data1 = data.use[, cells.1, drop = FALSE],
+            data2 = data.use[, cells.2, drop = FALSE],
+            mygenes = rownames(x = data.use),
+            print.bar = verbose
+          )
+          to.return$power <- abs(x = to.return$myAUC - 0.5) * 2
+          return(to.return)
+        }
+        # Differential expression testing using Student's t-test
+        # Identify differentially expressed genes between two groups of cells using the Student's t-test
+        DiffTTest <- function(data.use, cells.1, cells.2, verbose = TRUE) {
+          p_val <- unlist(
+            x = sapply(
+              X = 1:nrow(data.use),
+              FUN = function(x) {
+                t.test(x = data.use[x, cells.1], y = data.use[x, cells.2])$p.value
+              }
+            )
+          )
+          to.return <- data.frame(p_val,row.names = rownames(x = data.use))
+          return(to.return)
+        }
+        
+        
+        features <- features %||% rownames(x = object)
+        # error checking
+        if (length(x = cells.1) == 0) {
+          stop("Cell group 1 is empty - identity of group 1 need to be defined ")
+        } 
+        else if (length(x = cells.2) == 0) {
+          stop("Cell group 2 is empty - identity of group 2 need to be defined ")
+          return(NULL)
+        } 
+        else if (length(x = cells.1) < min.cells.group) {
+          stop("Cell group 1 has fewer than ", min.cells.group, " cells")
+        } 
+        else if (length(x = cells.2) < min.cells.group) {
+          stop("Cell group 2 has fewer than ", min.cells.group, " cells")
+        } 
+        else if (any(!cells.1 %in% colnames(x = object))) {
+          bad.cells <- colnames(x = object)[which(x = !as.character(x = cells.1) %in% colnames(x = object))]
+          stop(
+            "The following cell names provided to cells.1 are not present: ",
+            paste(bad.cells, collapse = ", ")
+          )
+        } else if (any(!cells.2 %in% colnames(x = object))) {
+          bad.cells <- colnames(x = object)[which(x = !as.character(x = cells.2) %in% colnames(x = object))]
+          stop(
+            "The following cell names provided to cells.2 are not present: ",
+            paste(bad.cells, collapse = ", ")
+          )
+        }
+        
+        # feature selection (based on percentages)
+        thresh.min <- 0
+        pct.1 <- round(
+          x = Matrix::rowSums(x = object[features, cells.1, drop = FALSE] > thresh.min) /
+            length(x = cells.1),
+          digits = 16
+        )
+        pct.2 <- round(
+          x = Matrix::rowSums(x = object[features, cells.2, drop = FALSE] > thresh.min) /
+            length(x = cells.2),
+          digits = 16
+        )
+        object.alpha <- cbind(pct.1, pct.2)
+        colnames(x = object.alpha) <- c("pct.1", "pct.2")
+        alpha.min <- apply(X = object.alpha, MARGIN = 1, FUN = max)
+        names(x = alpha.min) <- rownames(x = object.alpha)
+        features <- names(x = which(x = alpha.min > min.pct))
+        if (length(x = features) == 0) {
+          stop("No features pass min.pct threshold")
+        }
+        alpha.diff <- alpha.min - apply(X = object.alpha, MARGIN = 1, FUN = min)
+        features <- names(
+          x = which(x = alpha.min > min.pct & alpha.diff > min.diff.pct)
+        )
+        if (length(x = features) == 0) {
+          stop("No features pass min.diff.pct threshold")
+        }
+        
+        # feature selection (based on average difference)
+        mean.fxn <- function(x) {
+          return(log(x = mean(x = expm1(x = x)) + pseudocount.use))
+        }
+        object.1 <- apply(
+          X = object[features, cells.1, drop = FALSE],
+          MARGIN = 1,
+          FUN = mean.fxn
+        )
+        object.2 <- apply(
+          X = object[features, cells.2, drop = FALSE],
+          MARGIN = 1,
+          FUN = mean.fxn
+        )
+        total.diff <- (object.1 - object.2)
+        
+        # feature selection (based on mean exprssion threshold)
+        features = names(x = which(x = expm1(object.1) > MeanExprsThrs  | expm1(object.2) > MeanExprsThrs ))
+        if (length(x = features) == 0) {
+          stop("No features pass log mean exprssion threshold")
+        }
+        
+        # feature selection (based on logfc threshold)
+        features.diff <- if (only.pos) {
+          names(x = which(x = total.diff > logfc.threshold))
+        } else {
+          names(x = which(x = abs(x = total.diff) > logfc.threshold))
+        }
+        features <- intersect(x = features, y = features.diff)
+        if (length(x = features) == 0) {
+          stop("No features pass logfc.threshold threshold")
+        }
+        
+        # sampling cell for DE computation
+        if (max.cells.per.ident < Inf) {
+          set.seed(seed = random.seed)
+          # Should be cells.1 and cells.2?
+          if (length(x = cells.1) > max.cells.per.ident) {
+            cells.1 <- sample(x = cells.1, size = max.cells.per.ident)
+          }
+          if (length(x = cells.2) > max.cells.per.ident) {
+            cells.2 <- sample(x = cells.2, size = max.cells.per.ident)
+          }
+        }
+        
+        # perform DE
+        de.results <- switch(
+          EXPR = test.use,
+          'wilcox' = WilcoxDETest(
+            data.use = object[features, c(cells.1, cells.2), drop = FALSE],
+            cells.1 = cells.1,
+            cells.2 = cells.2,
+            verbose = verbose
+          ),
+          'bimod' = DiffExpTest(
+            data.use = object[features, c(cells.1, cells.2), drop = FALSE],
+            cells.1 = cells.1,
+            cells.2 = cells.2,
+            verbose = verbose
+          ),
+          'roc' = MarkerTest(
+            data.use = object[features, c(cells.1, cells.2), drop = FALSE],
+            cells.1 = cells.1,
+            cells.2 = cells.2,
+            verbose = verbose
+          ),
+          't' = DiffTTest(
+            data.use = object[features, c(cells.1, cells.2), drop = FALSE],
+            cells.1 = cells.1,
+            cells.2 = cells.2,
+            verbose = verbose
+          ),
+          stop("Unknown test: ", test.use)
+        )
+        
+        diff.col <- "avg_logFC"
+        de.results[, diff.col] <- total.diff[rownames(x = de.results)]
+        de.results <- cbind(de.results, object.alpha[rownames(x = de.results), , drop = FALSE])
+        
+        if (only.pos) {
+          de.results <- de.results[de.results[, diff.col] > 0, , drop = FALSE]
+        }
+        
+        if (test.use == "roc") {
+          de.results <- de.results[order(-de.results$power, -de.results[, diff.col]), ]
+        } else {
+          de.results <- de.results[order(de.results$p_val, -de.results[, diff.col]), ]
+          de.results$p_val_adj = p.adjust(
+            p = de.results$p_val,
+            method = p.adjust.methods
+          )
+        }
+        de.results$Gene<-row.names(de.results)
+        row.names(de.results)<-NULL
+        return(de.results)
+      }
+      
+      marker.genes=c()
+      #Sequential inner loop
+      for (j in (i + 1):numberUniqueClusters) {
+         ### Get the cell names cell data for cluster i
+         cellNamesi <- names(consensusClusterLabels)[which(consensusClusterLabels == uniqueClusters[i])]
+         cellDatai <- dataMatrix[, cellNamesi]
+         ### Get the cell names cell data for cluster j
+         cellNamesj <- names(consensusClusterLabels)[which(consensusClusterLabels == uniqueClusters[j])]
+         cellDataj <- dataMatrix[, cellNamesj]
+
+         tmp = cbind(Cluster1=uniqueClusters[i],Cluster2=uniqueClusters[j],
+                               ComputePairWiseDE(object = as.matrix(dataMatrix),
+                                                 cells.1 = cellNamesi,
+                                                 cells.2 = cellNamesj,
+                                                 logfc.threshold = fcThrs,
+                                                 test.use = method,
+                                                 min.pct = minPerCent))
+          
+          #Filter for q-value, fc filtering internally
+          if (dim(tmp)[1]>1){
+            marker.genes<-rbind(marker.genes,tmp[tmp$p_val_adj < qValThrs,])
+              
+          } 
+        }
+      marker.genes
     }
     
     stopCluster(cl)
-    ### Name the q-value, log2 fold change and DE gene lists by cluster names
-    names(qValueList) <- uniqueClusters
-    names(logFCList) <- uniqueClusters
-    names(deGeneList) <- uniqueClusters
-
-    saveRDS(object = qValueList, file = "qValueList.rds")
-    saveRDS(object = logFCList, file = "logFCList.rds")
-    saveRDS(object = deGeneList, file = "deGeneList.rds")
+    
+    deGenes$avg_logFC<-abs(deGenes$avg_logFC)
+    saveRDS(deGenes,"PairwiseDifferentiallyExpressedGenes.RDS")
 
     ### Obtain union of all de genes
     # initialize empty DE gene union vector
-    deGeneUnion <- c()
-
-    # For each pair of clusters
-    for (i in 1:(numberUniqueClusters - 1)) {
-        for (j in (i + 1):numberUniqueClusters) {
-
-            # Rank the DE genes for each comparison by fold change and take the top 30
-
-            de_logfc <- logFCList[[i]][[j]][which(rownames(dataIn) %in% deGeneList[[i]][[j]])]
-            names(de_logfc) <- rownames(dataIn)[which(rownames(dataIn) %in% deGeneList[[i]][[j]])]
-            sorted_de_logfc <- sort(x = abs(de_logfc), decreasing = T)
-
-            if(length(sorted_de_logfc) > 30) {
-                de_genes <- names(sorted_de_logfc)[1:30]
-        } else {
-                de_genes <- names(sorted_de_logfc)
-            }
-
-            deGeneUnion <-
-                union(deGeneUnion, de_genes)
-        }
-    }
-
+    tmp<-deGenes %>% group_by(Cluster1,Cluster2) %>% top_n(n=NumbertopDEGenes,wt=avg_logFC)
+    deGeneUnion<-unique(tmp$Gene)
     print(str(deGeneUnion))
 
     saveRDS(deGeneUnion, file = "deGeneUnion.rds")
 
     ### Compute PCA + euclidean distance of cells based on the union of DE genes
-    pca.data <- irlba::prcomp_irlba(x = t(dataIn[deGeneUnion, ]), n = min(length(deGeneUnion), 15), center = TRUE, scale. = FALSE)$x
+    pca.data <- irlba::prcomp_irlba(x = t(dataMatrix[deGeneUnion, ]), n = min(length(deGeneUnion), 15), center = TRUE, scale. = FALSE)$x
 
     d <- dist(pca.data, method = "euclidean")
 
@@ -940,8 +807,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
     # d = as.dist(1 - cor(dataIn[deGeneUnion, ], method = "pearson"))
 
     ### Build dendrogram using distance matrix d
-    if(require(fastCluster)){
-	    cellTree = fastCluster::hclust(d, method = "ward.D2")
+    if(require(fastcluster)){
+	    cellTree = fastcluster::hclust(d, method = "ward.D2")
     }else{
 	    cellTree = stats::hclust(d, method = "ward.D2")
     }
@@ -971,8 +838,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     ### Compute number of detected genes for each cell in the input data
     nodg <- c()
-    for (i in 1:length(colnames(dataIn))) {
-        nodg[i] <- length(which(dataIn[, i] > 0))
+    for (i in 1:length(colnames(dataMatrix))) {
+        nodg[i] <- length(which(dataMatrix[, i] > 0))
     }
 
     ### Create and initialise object to return to function caller
@@ -987,7 +854,7 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     ### Plot DE Gene Plot
     cellTypeDEPlot(
-        dataMatrix = dataIn[deGeneUnion,],
+        dataMatrix = dataMatrix[deGeneUnion,],
         nodg = nodg,
         cellTree = cellTree,
         clusterLabels = consensusClusterLabels,
@@ -998,5 +865,4 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     return(returnObj)
 }
-
 
