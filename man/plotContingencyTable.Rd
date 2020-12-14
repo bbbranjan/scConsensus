@@ -8,6 +8,7 @@ plotContingencyTable(
   cluster_labels_1 = NULL,
   cluster_labels_2 = NULL,
   automateConsensus = T,
+  minClustSize = 10,
   filename = "Contingency_Table.pdf"
 )
 }
@@ -17,6 +18,8 @@ plotContingencyTable(
 \item{cluster_labels_2}{Second vector of cluster labels for each cell}
 
 \item{automateConsensus}{Boolean indicating whether automated consensus should be returned}
+
+\item{minClustSize}{Minimum number of cells in a cluster. Default = 10.}
 
 \item{filename}{name of contingency table file}
 }

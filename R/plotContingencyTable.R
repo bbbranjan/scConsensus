@@ -5,13 +5,14 @@
 #' @param cluster_labels_1 First vector of cluster labels for each cell
 #' @param cluster_labels_2 Second vector of cluster labels for each cell
 #' @param automateConsensus Boolean indicating whether automated consensus should be returned
+#' @param minClustSize Minimum number of cells in a cluster. Default = 10.
 #' @param filename name of contingency table file
 #'
 #' @return consensus cluster labels vector
 #'
 #' @export
 #'
-plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NULL, automateConsensus = T, filename = "Contingency_Table.pdf") {
+plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NULL, automateConsensus = T, minClustSize = 10, filename = "Contingency_Table.pdf") {
 
     if(is.null(cluster_labels_1) | is.null(cluster_labels_2)) {
         stop("Incomplete parameters provided.")
@@ -82,24 +83,25 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
             }
         }
 
-        if (ncol(ctg_matrix) > nrow(ctg_matrix)) {
+        r = nrow(ctg_matrix)
+        c = ncol(ctg_matrix)
+        if (c > r) {
             ctg_matrix <- t(ctg_matrix)
         }
-        else if(ncol(ctg_matrix) == nrow(ctg_matrix)) {
-            if(length(intersect(unique(consensusClusterLabels), rownames(ctg_matrix)))!= nrow(ctg_matrix)) {
+        else if(c == r) {
+            if(length(intersect(unique(consensusClusterLabels), rownames(ctg_matrix)))!= r) {
                 ctg_matrix <- t(ctg_matrix)
             }
         }
 
 
-        for(i in 1:nrow(ctg_matrix)) {
+        for(i in 1:r) {
 
             row <- ctg_matrix[i, ]
+            percent_row <- 100*(row/sum(row))
 
-            row <- 100*(row/sum(row))
-
-            for(j in 1:length(row)) {
-                if(row[j] >= 10) {
+            for(j in 1:c) {
+                if(percent_row[j] >= 10 & row[j] > minClustSize) {
                     consensusClusterLabels[which((consensusClusterLabels == rownames(ctg_matrix)[i]) & (remainderLabels == names(row)[j]))] <- paste(rownames(ctg_matrix)[i], names(row)[j], sep = "_")
                 }
             }
