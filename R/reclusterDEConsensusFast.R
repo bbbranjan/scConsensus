@@ -224,12 +224,12 @@ reclusterDEConsensusFast <- function(dataMatrix,
             # feature selection (based on percentages)
             thresh.min <- 0
             pct.1 <- round(
-                x = Matrix::rowSums(x = object[features, cells.1, drop = FALSE] > thresh.min) /
+                x = 100*Matrix::rowSums(x = object[features, cells.1, drop = FALSE] > thresh.min) /
                     length(x = cells.1),
                 digits = 16
             )
             pct.2 <- round(
-                x = Matrix::rowSums(x = object[features, cells.2, drop = FALSE] > thresh.min) /
+                x = 100*Matrix::rowSums(x = object[features, cells.2, drop = FALSE] > thresh.min) /
                     length(x = cells.2),
                 digits = 16
             )
