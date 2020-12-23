@@ -87,10 +87,14 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
         c = ncol(ctg_matrix)
         if (c > r) {
             ctg_matrix <- t(ctg_matrix)
+            r = nrow(ctg_matrix)
+            c = ncol(ctg_matrix)
         }
         else if(c == r) {
             if(length(intersect(unique(consensusClusterLabels), rownames(ctg_matrix)))!= r) {
                 ctg_matrix <- t(ctg_matrix)
+                r = nrow(ctg_matrix)
+                c = ncol(ctg_matrix)
             }
         }
 
@@ -101,7 +105,7 @@ plotContingencyTable <- function(cluster_labels_1 = NULL, cluster_labels_2 = NUL
             percent_row <- 100*(row/sum(row))
 
             for(j in 1:c) {
-                if(percent_row[j] >= 10 & row[j] > minClustSize) {
+                if((percent_row[j] >= 10) && (row[j] > minClustSize)) {
                     consensusClusterLabels[which((consensusClusterLabels == rownames(ctg_matrix)[i]) & (remainderLabels == names(row)[j]))] <- paste(rownames(ctg_matrix)[i], names(row)[j], sep = "_")
                 }
             }
