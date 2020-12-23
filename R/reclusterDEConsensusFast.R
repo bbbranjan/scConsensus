@@ -239,14 +239,16 @@ reclusterDEConsensusFast <- function(dataMatrix,
             names(x = alpha.min) <- rownames(x = object.alpha)
             features <- names(x = which(x = alpha.min > min.pct))
             if (length(x = features) == 0) {
-                stop("No features pass min.pct threshold")
+                warning("No features pass min.pct threshold")
+                return(NULL)
             }
             alpha.diff <- alpha.min - apply(X = object.alpha, MARGIN = 1, FUN = min)
             features <- names(
                 x = which(x = alpha.min > min.pct & alpha.diff > min.diff.pct)
             )
             if (length(x = features) == 0) {
-                stop("No features pass min.diff.pct threshold")
+                warning("No features pass min.diff.pct threshold")
+                return(NULL)
             }
 
             # feature selection (based on average difference)
@@ -268,7 +270,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
             # feature selection (based on mean exprssion threshold)
             features = names(x = which(x = expm1(object.1) > MeanExprsThrs  | expm1(object.2) > MeanExprsThrs ))
             if (length(x = features) == 0) {
-                stop("No features pass log mean exprssion threshold")
+                warning("No features pass log mean exprssion threshold")
+                return(NULL)
             }
 
             # feature selection (based on logfc threshold)
@@ -279,7 +282,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
             }
             features <- intersect(x = features, y = features.diff)
             if (length(x = features) == 0) {
-                stop("No features pass logfc.threshold threshold")
+                warning("No features pass logfc.threshold threshold")
+                return(NULL)
             }
 
             # sampling cell for DE computation
@@ -376,7 +380,7 @@ reclusterDEConsensusFast <- function(dataMatrix,
     stopCluster(cl)
 
     deGenes$avg_logFC<-abs(deGenes$avg_logFC)
-    saveRDS(deGenes,"PairwiseDifferentiallyExpressedGenes.RDS")
+    # saveRDS(deGenes,"PairwiseDifferentiallyExpressedGenes.RDS")
 
     ### Obtain union of all de genes
     # initialize empty DE gene union vector
@@ -384,7 +388,7 @@ reclusterDEConsensusFast <- function(dataMatrix,
     deGeneUnion<-unique(tmp$Gene)
     print(str(deGeneUnion))
 
-    saveRDS(deGeneUnion, file = "deGeneUnion.rds")
+    # saveRDS(deGeneUnion, file = "deGeneUnion.rds")
 
     ### Compute PCA + euclidean distance of cells based on the union of DE genes
     pca.data <- irlba::prcomp_irlba(x = t(dataMatrix[deGeneUnion, ]), n = min(length(deGeneUnion), 15), center = TRUE, scale. = FALSE)$x
