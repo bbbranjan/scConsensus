@@ -65,6 +65,9 @@ reclusterDEConsensusFast <- function(dataMatrix,
         library(tidyverse)
         library(ROCR)
         library(dplyr)
+        library(tidyr)
+        library(ggpubr)
+        library(cluster)
         #Function definition instead of export
         ComputePairWiseDE <- function(object, cells.1 = NULL, cells.2 = NULL, features = NULL,
                                       logfc.threshold = log(1.5), test.use = "wilcox", min.pct = 0.25,
@@ -407,6 +410,9 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     # Initialize empty dynamic colors list
     dynamicColorsList <- list()
+    
+    #DataFrame holding clusterinformation depending on deepsplit values
+    deepSplitInfo<-c()
 
     ### For all values of deepsplit specified
     for (dsv in deepSplitValues) {
@@ -422,7 +428,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
         dynamicColorsList[[paste("deepsplit:", dsv)]] <-
             dynamicColors
-
+        
+        deepSplitInfo<-rbind(deepSplitInfo,cbind("DeepSplit"=dsv,"NumbersOfClusters"=length(unique(dynamicGroups)),"SI"=mean(summary(cluster::silhouette(dynamicGroups,dmatrix=as.matrix(d)))$clus.avg.widths)))
     }
 
     ### Name dynamic colors list
@@ -443,6 +450,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     ### Save DE object
     saveRDS(object = returnObj, file = filename)
+    
+    print(data.frame(deepSplitInfo))
 
     ### Plot DE Gene Plot
     cellTypeDEPlot(
@@ -454,6 +463,8 @@ reclusterDEConsensusFast <- function(dataMatrix,
         colScheme = "violet",
         filename = plotName
     )
+    
+
 
     return(returnObj)
 }
