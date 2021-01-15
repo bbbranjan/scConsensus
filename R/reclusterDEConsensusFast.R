@@ -451,7 +451,7 @@ reclusterDEConsensusFast <- function(dataMatrix,
     ### Save DE object
     saveRDS(object = returnObj, file = filename)
     
-    print(data.frame(deepSplitInfo))
+    cat(data.frame(deepSplitInfo))
 
     ### Plot DE Gene Plot
     cellTypeDEPlot(
