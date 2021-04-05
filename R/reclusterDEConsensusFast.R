@@ -34,6 +34,7 @@ reclusterDEConsensusFast <- function(dataMatrix,
     #libraries required for parallel execution
     require(foreach)
     require(doParallel)
+    require(dplyr)
 
     ### Use only clusters with number of cells > minimum cluster size for DE gene calling
     which(table(consensusClusterLabels) > minClusterSize)
@@ -450,8 +451,6 @@ reclusterDEConsensusFast <- function(dataMatrix,
 
     ### Save DE object
     saveRDS(object = returnObj, file = filename)
-    
-    cat(data.frame(deepSplitInfo))
 
     ### Plot DE Gene Plot
     cellTypeDEPlot(
